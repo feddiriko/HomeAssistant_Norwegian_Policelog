@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurer politilogg",
+        "description": "Velg politidistrikt og eventuelt kommune.",
+        "data": {
+          "district": "Politidistrikt",
+          "municipality": "Kommune"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan ikke koble til politiloggen API."
+    },
+    "abort": {
+      "already_configured": "Politiloggen er allerede konfigurert for dette distriktet."
+    }
+  }
+}

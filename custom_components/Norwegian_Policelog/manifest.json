@@ -1,0 +1,11 @@
+{
+  "domain": "norwegian_policelog",
+  "name": "Norwegian Policelog",
+  "version": "1.0.0",
+  "documentation": "https://github.com/feddiriko/HomeAssistant_Norwegian_Policelog/",
+  "issue_tracker": "https://github.com/feddiriko/HomeAssistant_Norwegian_Policelog/issues", 
+  "requirements": ["requests"],
+  "config_flow": true,
+  "dependencies": [],
+  "codeowners": ["@feddiriko"]
+}

@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Police Log",
+        "description": "Choose a police district and (optionally) a municipality.",
+        "data": {
+          "district": "District",
+          "municipality": "Municipality"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to police log API."
+    },
+    "abort": {
+      "already_configured": "Police log is already configured for this district."
+    }
+  }
+}

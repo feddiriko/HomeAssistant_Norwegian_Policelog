@@ -1,0 +1,12 @@
+{
+  "name": "Norwegian Policelog",
+  "content_in_root": false,
+  "documentation": "https://github.com/feddiriko/HomeAssistant_Norwegian_Policelog",
+  "homepage": "https://github.com/feddiriko/HomeAssistant_Norwegian_Policelog",
+  "issues": "https://github.com/feddiriko/HomeAssistant_Norwegian_Policelog/issues",
+  "license": "MIT",
+  "dependencies": [],
+  "codeowners": ["@feddiriko"],
+  "version": "1.0.0",
+  "iot_class": "Cloud Polling"
+}
