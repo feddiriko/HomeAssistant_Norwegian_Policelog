@@ -7,6 +7,5 @@
   "requirements": ["requests"],
   "config_flow": true,
   "dependencies": [],
-  "codeowners": ["@feddiriko"],
-  "reload": true
+  "codeowners": ["@feddiriko"]
 }
