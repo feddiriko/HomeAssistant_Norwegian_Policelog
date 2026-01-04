@@ -8,6 +8,6 @@
   "dependencies": [],
   "codeowners": ["@feddiriko"],
   "version": "1.2.0",
-  "iot_class": "Cloud Polling", 
-  "icon": "custom_components/norwegian_policelog/icon.png"
+  "iot_class": "Cloud Polling"
 }
+
