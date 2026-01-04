@@ -40,8 +40,7 @@ Or click this button:
 ## 🛠 Configuration
 
 - **District** is required
-- **Municipality** is optional, but must belong to the selected district
-
+  
 Districts:
 - Oslo
 - Øst
