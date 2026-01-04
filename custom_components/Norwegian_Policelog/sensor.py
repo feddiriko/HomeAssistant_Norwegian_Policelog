@@ -1,16 +1,17 @@
 import logging
-import requests
-from datetime import timedelta, datetime
-from homeassistant.helpers.entity import Entity
-from homeassistant.util import Throttle
 import urllib.parse
+from datetime import datetime, timedelta
+
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import Throttle
 
 _LOGGER = logging.getLogger(__name__)
 
 MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=60)
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    district = config_entry.data.get("district", "SørVest")
+    district = config_entry.data.get("district")
     municipality = config_entry.data.get("municipality", "").strip()
 
     district_encoded = urllib.parse.quote(district)
@@ -20,68 +21,72 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     if municipality_encoded:
         api_url += f"&Municipalities={municipality_encoded}"
 
-    async_add_entities([PoliceLogSensor(api_url, district, municipality)], True)
+    async_add_entities(
+        [PoliceLogSensor(hass, api_url, district, municipality)],
+        update_before_add=True,
+    )
 
 
-class PoliceLogSensor(Entity):
-    def __init__(self, api_url, district, municipality=None):
+class PoliceLogSensor(SensorEntity):
+    _attr_icon = "mdi:police-station"
+
+    def __init__(self, hass, api_url, district, municipality):
+        self.hass = hass
         self._api_url = api_url
         self._district = district
         self._municipality = municipality
-        self._name = f"Police Log {district} {municipality}" if municipality else f"Police Log {district}"
-        self._state = None
-        self._data = None
-        self._icon = "mdi:police-station"
         self._last_event_id = None
-        self._last_updated = None
+        self._event = None
+
+        name = f"Police Log {district}"
+        if municipality:
+            name += f" {municipality}"
+
+        self._attr_name = name
+        self._attr_unique_id = (
+            f"policelog_{district}_{municipality}".lower().replace(" ", "_")
+        )
 
     @property
-    def name(self):
-        return self._name
-
-    @property
-    def unique_id(self):
-        base = f"policelog_{self._district.lower()}"
-        if self._municipality:
-            base += f"_{self._municipality.lower()}"
-        return base.replace(" ", "_")
-
-    @property
-    def state(self):
-        return self._state
-
-    @property
-    def icon(self):
-        return self._icon
+    def native_value(self):
+        """Short state (ALWAYS < 255 chars)"""
+        if not self._event:
+            return "No data"
+        return self._event.get("published", "Updated")
 
     @property
     def extra_state_attributes(self):
+        if not self._event:
+            return {}
+
         return {
-            "log_text": self._data.get("text") if self._data else "No data",
-            "published": self._data.get("published") if self._data else None,
-            "last_updated": self._last_updated,
+            "text": self._event.get("text"),
+            "published": self._event.get("published"),
+            "id": self._event.get("id"),
+            "district": self._district,
+            "municipality": self._municipality,
+            "last_updated": datetime.utcnow().isoformat(),
         }
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
-    def update(self):
+    async def async_update(self):
+        session = async_get_clientsession(self.hass)
+
         try:
-            response = requests.get(self._api_url, timeout=10)
-            response.raise_for_status()
-            result = response.json()
+            async with session.get(self._api_url, timeout=10) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
 
-            if result and isinstance(result.get("data"), dict):
-                event = result["data"]
-                event_id = event.get("id")
+            event = data.get("data")
+            if not event:
+                _LOGGER.debug("No police log data returned")
+                return
 
-                if event_id and event_id != self._last_event_id:
-                    self._last_event_id = event_id
-                    self._data = event
-                    self._state = event.get("text", "No information")
-                    self._last_updated = datetime.utcnow().isoformat()
-                    _LOGGER.debug("New police log event received")
-                else:
-                    _LOGGER.debug("No new event found")
-            else:
-                _LOGGER.warning("Invalid or empty response from API")
-        except requests.RequestException as e:
-            _LOGGER.error("Failed to fetch data: %s", e)
+            event_id = event.get("id")
+            if event_id != self._last_event_id:
+                self._last_event_id = event_id
+                self._event = event
+                _LOGGER.debug("New police log event received")
+
+        except Exception as err:
+            _LOGGER.error("Failed to update police log: %s", err)
