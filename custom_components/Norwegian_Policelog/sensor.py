@@ -1,92 +1,70 @@
+import asyncio
+from datetime import timedelta
 import logging
-import urllib.parse
-from datetime import datetime, timedelta
 
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.util import Throttle
+import aiohttp
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
-MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=60)
+UPDATE_INTERVAL = timedelta(seconds=120)
+API_URL = "https://api.politiet.no/politiloggen/v1/message"
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    district = config_entry.data.get("district")
-    municipality = config_entry.data.get("municipality", "").strip()
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+    districts = entry.data.get("districts", [])
+    coordinator = NorwegianPolicelogCoordinator(hass, districts)
+    await coordinator.async_config_entry_first_refresh()
 
-    district_encoded = urllib.parse.quote(district)
-    municipality_encoded = urllib.parse.quote(municipality) if municipality else ""
+    sensors = [NorwegianPolicelogSensor(coordinator, district) for district in districts]
+    async_add_entities(sensors)
 
-    api_url = f"https://api.politiet.no/politiloggen/v1/message?Districts={district_encoded}"
-    if municipality_encoded:
-        api_url += f"&Municipalities={municipality_encoded}"
-
-    async_add_entities(
-        [PoliceLogSensor(hass, api_url, district, municipality)],
-        update_before_add=True,
-    )
-
-
-class PoliceLogSensor(SensorEntity):
-    _attr_icon = "mdi:police-station"
-
-    def __init__(self, hass, api_url, district, municipality):
-        self.hass = hass
-        self._api_url = api_url
-        self._district = district
-        self._municipality = municipality
-        self._last_event_id = None
-        self._event = None
-
-        name = f"Police Log {district}"
-        if municipality:
-            name += f" {municipality}"
-
-        self._attr_name = name
-        self._attr_unique_id = (
-            f"policelog_{district}_{municipality}".lower().replace(" ", "_")
+class NorwegianPolicelogCoordinator(DataUpdateCoordinator):
+    def __init__(self, hass: HomeAssistant, districts):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="Norwegian Policelog",
+            update_interval=UPDATE_INTERVAL
         )
+        self.districts = districts
+        self.data = {district: None for district in districts}
+
+    async def _async_update_data(self):
+        async with aiohttp.ClientSession() as session:
+            for district in self.districts:
+                params = {"Districts": district}
+                try:
+                    async with session.get(API_URL, params=params) as resp:
+                        if resp.status != 200:
+                            raise UpdateFailed(f"Error fetching data: {resp.status}")
+                        result = await resp.json()
+                        text = result.get("data", {}).get("text", "")
+                        # truncate to 200 chars
+                        if len(text) > 200:
+                            text = text[:200]
+                        self.data[district] = text
+                except Exception as err:
+                    raise UpdateFailed(f"Error fetching data for {district}: {err}")
+        return self.data
+
+class NorwegianPolicelogSensor(Entity):
+    def __init__(self, coordinator: NorwegianPolicelogCoordinator, district: str):
+        self.coordinator = coordinator
+        self.district = district
+        self._attr_name = f"Norwegian Policelog {district}"
+        self._attr_unique_id = f"norwegian_policelog_{district.lower()}"
+        self._attr_icon = "mdi:police-badge"  # <-- set your MDI icon here
 
     @property
-    def native_value(self):
-        """Short state (ALWAYS < 255 chars)"""
-        if not self._event:
-            return "No data"
-        return self._event.get("published", "Updated")
+    def state(self):
+        return self.coordinator.data.get(self.district)
 
     @property
-    def extra_state_attributes(self):
-        if not self._event:
-            return {}
+    def available(self):
+        return self.coordinator.data.get(self.district) is not None
 
-        return {
-            "text": self._event.get("text"),
-            "published": self._event.get("published"),
-            "id": self._event.get("id"),
-            "district": self._district,
-            "municipality": self._municipality,
-            "last_updated": datetime.utcnow().isoformat(),
-        }
-
-    @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def async_update(self):
-        session = async_get_clientsession(self.hass)
-
-        try:
-            async with session.get(self._api_url, timeout=10) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-
-            event = data.get("data")
-            if not event:
-                _LOGGER.debug("No police log data returned")
-                return
-
-            event_id = event.get("id")
-            if event_id != self._last_event_id:
-                self._last_event_id = event_id
-                self._event = event
-                _LOGGER.debug("New police log event received")
-
-        except Exception as err:
-            _LOGGER.error("Failed to update police log: %s", err)
+        await self.coordinator.async_request_refresh()
